@@ -320,10 +320,15 @@ TEST_CASE("IP Space Int", "[libswoc][ip][ipspace]") {
   auto dump = [] (int_space & space) -> void {
     swoc::LocalBufferWriter<1024> w;
     std::cout << "Dumping " << space.count() << " ranges" << std::endl;
-    for ( auto & r : space ) {
-      std::cout << w.clear().print("{} - {} : {}\n", r.min(), r.max(), r.payload()).view();
+    for ( auto && [ r, payload ] : space ) {
+      std::cout << w.clear().print("{} - {} : {}\n", r.min(), r.max(), payload).view();
     }
   };
+
+  swoc::DiscreteRange<IP4Addr> dr4;
+//  swoc::IP4Range r4(IP4Addr{"1.2.3.5-5.6.7.8"_tv});
+  swoc::IP4Range r4{dr4};
+  swoc::IPRange range{r4};
 
   REQUIRE(space.count() == 0);
 

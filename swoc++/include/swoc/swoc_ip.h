@@ -481,6 +481,9 @@ public:
 
   IP4Range() = default;
   IP4Range(IP4Addr const& addr, IPMask const& mask);
+  /// Construct from super type.
+  /// @internal Why do I have to do this, even though the super type constructors are inherited?
+  IP4Range(super_type const& r) : super_type(r) {}
 
   /** Construct range from @a text.
    *
@@ -514,6 +517,9 @@ class IP6Range : public DiscreteRange<IP6Addr> {
 
 public:
   using super_type::super_type; ///< Import super class constructors.
+  /// Construct from super type.
+  /// @internal Why do I have to do this, even though the super type constructors are inherited?
+  IP6Range(super_type const& r) : super_type(r) {}
 
   self_type & assign(IP6Addr const& addr, IPMask const& mask);
 
@@ -525,6 +531,12 @@ class IPRange {
   using self_type = IPRange;
 public:
   IPRange() = default;
+  IPRange(IP4Range const& r4) : _family(AF_INET) {
+    _range._ip4 = r4;
+  }
+  IPRange(IP6Range const& r6) : _family(AF_INET6) {
+    _range._ip6 = r6;
+  }
 
   bool is(sa_family_t f) const {
     return f == _family;
@@ -704,8 +716,102 @@ public:
   /// Remove all ranges.
   void clear();
 
-  typename IP4Space::iterator begin() { return _ip4.begin(); }
-  typename IP4Space::iterator end() { return _ip4.end(); }
+  class const_iterator {
+    using self_type = const_iterator; ///< Self reference type.
+    friend class IPSpace;
+  public:
+    using value_type = std::tuple<IPRange, PAYLOAD&>; /// Import for API compliance.
+    // STL algorithm compliance.
+    using iterator_category = std::bidirectional_iterator_tag;
+    using pointer           = value_type *;
+    using reference         = value_type &;
+    using difference_type   = int;
+
+    /// Default constructor.
+    const_iterator() = default;
+
+    /// Pre-increment.
+    /// Move to the next element in the list.
+    /// @return The iterator.
+    self_type &operator++();
+
+    /// Pre-decrement.
+    /// Move to the previous element in the list.
+    /// @return The iterator.
+    self_type &operator--();
+
+    /// Post-increment.
+    /// Move to the next element in the list.
+    /// @return The iterator value before the increment.
+    self_type operator++(int);
+
+    /// Post-decrement.
+    /// Move to the previous element in the list.
+    /// @return The iterator value before the decrement.
+    self_type operator--(int);
+
+    /// Dereference.
+    /// @return A reference to the referent.
+    value_type &operator*() const;
+
+    /// Dereference.
+    /// @return A pointer to the referent.
+    value_type *operator->() const;
+
+    /// Convenience conversion to pointer type
+    /// Because of how this list is normally used, being able to pass an iterator as a pointer is quite convienent.
+    /// If the iterator isn't valid, it converts to @c nullptr.
+    operator value_type *() const;
+
+    /// Equality
+    bool operator==(self_type const &that) const {
+      return this->is_ip4() ? _iter_4 == that._iter_4 : _iter_6 == that._iter_6;
+    }
+
+    /// Inequality
+    bool operator!=(self_type const &that) const {
+      return this->is_ip4() ? _iter_4 != that._iter_4 : _iter_6 != that._iter_6;
+    }
+
+  protected:
+    // These are stored non-const to make implementing @c iterator easier. This class provides the
+    // required @c const protection.
+    typename IP4Space::iterator _iter_4;
+    typename IP4Space::iterator _end_4;
+    typename IP6Space::iterator _iter_6;
+    typename IP6Space::iterator _end_6;
+    value_type _value { IPRange{}, *null_payload };
+
+    static constexpr PAYLOAD *  null_payload = nullptr;
+
+    const_iterator(IPSpace & space) : _iter_4(space._ip4.begin()), _end_4(space._ip4.end()), _iter_6(space._ip6.begin()), _end_6(space._ip6.end()) {
+      if (this->is_ip4()) {
+        new (&_value) value_type(_iter_4->range(), _iter_4->payload());
+      } else if (this->is_ip6()) {
+        new (&_value) value_type{_iter_6->range(), _iter_6->payload()};
+      }
+    }
+    const_iterator(typename IP4Space::iterator const& iter4, typename IP6Space::iterator const& iter6) : _iter_4(iter4), _end_4(iter4), _iter_6(iter6), _end_6(iter6) {
+    }
+
+    bool is_ip4() const { return _iter_4 != _end_4; }
+    bool is_ip6() const { return _iter_6 != _end_6; }
+  };
+
+  class iterator : public const_iterator {
+    using self_type = iterator;
+    using super_type = const_iterator;
+    friend class IPSpace;
+  public:
+  protected:
+    using super_type::super_type;
+  };
+
+  const_iterator begin() const { return const_iterator(*this); }
+  const_iterator end() const { return const_iterator(_ip4.end(), _ip6.end()); }
+
+  iterator begin() { return iterator{*this}; }
+  iterator end() { return iterator{_ip4.end(), _ip6.end()}; }
 
 protected:
   IP4Space _ip4;

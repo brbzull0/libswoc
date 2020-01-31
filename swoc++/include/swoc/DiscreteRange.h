@@ -578,6 +578,8 @@ protected:
      */
     self_type & assign(PAYLOAD const &payload);
 
+    range_type const& range() const { return _range; }
+
     self_type &
     assign_min(METRIC const &m) {
       _range.assign_min(m);

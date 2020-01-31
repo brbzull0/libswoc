@@ -151,7 +151,7 @@ public:
   protected:
     // These are stored non-const to make implementing @c iterator easier. This class provides the required @c const
     // protection.
-    list_type *_list{nullptr};                   ///< Needed to descrement from @c end() position.
+    list_type *_list{nullptr};                   ///< Needed to decrement from @c end() position.
     typename list_type::value_type *_v{nullptr}; ///< Referenced element.
 
     /// Internal constructor for containers.
