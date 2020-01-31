@@ -29,9 +29,11 @@ namespace swoc
 // All of these expect the address to be in network order.
 BufferWriter &bwformat(BufferWriter &w, bwf::Spec const &spec, sockaddr const *addr);
 BufferWriter &bwformat(BufferWriter &w, bwf::Spec const &spec, in6_addr const &addr);
-BufferWriter &bwformat(BufferWriter &w, bwf::Spec const &spec, IP4Addr const &addr);
-BufferWriter &bwformat(BufferWriter &w, bwf::Spec const &spec, IPAddr const &addr);
 BufferWriter &bwformat(BufferWriter &w, bwf::Spec const &spec, sockaddr const *addr);
+// Use class information for ordering.
+BufferWriter &bwformat(BufferWriter &w, bwf::Spec const &spec, IP4Addr const &addr);
+BufferWriter &bwformat(BufferWriter &w, bwf::Spec const &spec, IP6Addr const &addr);
+BufferWriter &bwformat(BufferWriter &w, bwf::Spec const &spec, IPAddr const &addr);
 
 inline BufferWriter &
 bwformat(BufferWriter &w, bwf::Spec const &spec, IPEndpoint const &addr) {

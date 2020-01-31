@@ -8,9 +8,9 @@
 #include <string_view>
 #include <variant>
 
+#include <swoc/TextView.h>
 #include <swoc/DiscreteRange.h>
 #include <swoc/RBTree.h>
-#include "bwf_base.h"
 
 namespace swoc
 {
@@ -168,6 +168,7 @@ public:
   /// Construct from text representation.
   /// If the @a text is invalid the result is an invalid instance.
   IP4Addr(string_view const &text);
+  IP4Addr(IPAddr const& addr);
 
   /// Assign from IPv4 raw address.
   self_type &operator=(in_addr_t ip);
@@ -255,6 +256,8 @@ public:
   /// Construct from text representation.
   /// If the @a text is invalid the result is an invalid instance.
   IP6Addr(string_view const& text);
+
+  IP6Addr(IPAddr const& addr);
 
   self_type &operator++();
 
@@ -413,6 +416,8 @@ public:
 
 protected:
   friend bool operator==(self_type const &, self_type const &);
+  friend IP4Addr;
+  friend IP6Addr;
 
   /// Address data.
   union raw_addr_type {
@@ -720,7 +725,7 @@ public:
     using self_type = const_iterator; ///< Self reference type.
     friend class IPSpace;
   public:
-    using value_type = std::tuple<IPRange, PAYLOAD&>; /// Import for API compliance.
+    using value_type = std::tuple<IPRange, PAYLOAD const&>; /// Import for API compliance.
     // STL algorithm compliance.
     using iterator_category = std::bidirectional_iterator_tag;
     using pointer           = value_type *;
@@ -752,11 +757,11 @@ public:
 
     /// Dereference.
     /// @return A reference to the referent.
-    value_type &operator*() const;
+    value_type const& operator*() const { return _value; }
 
     /// Dereference.
     /// @return A pointer to the referent.
-    value_type *operator->() const;
+    value_type const* operator->() const { return &_value; }
 
     /// Convenience conversion to pointer type
     /// Because of how this list is normally used, being able to pass an iterator as a pointer is quite convienent.
@@ -765,37 +770,30 @@ public:
 
     /// Equality
     bool operator==(self_type const &that) const {
-      return this->is_ip4() ? _iter_4 == that._iter_4 : _iter_6 == that._iter_6;
+      return _iter_4.has_next() ? _iter_4 == that._iter_4 : _iter_6 == that._iter_6;
     }
 
     /// Inequality
     bool operator!=(self_type const &that) const {
-      return this->is_ip4() ? _iter_4 != that._iter_4 : _iter_6 != that._iter_6;
+      return _iter_4.has_next() ? _iter_4 != that._iter_4 : _iter_6 != that._iter_6;
     }
 
   protected:
     // These are stored non-const to make implementing @c iterator easier. This class provides the
     // required @c const protection.
     typename IP4Space::iterator _iter_4;
-    typename IP4Space::iterator _end_4;
     typename IP6Space::iterator _iter_6;
-    typename IP6Space::iterator _end_6;
     value_type _value { IPRange{}, *null_payload };
 
     static constexpr PAYLOAD *  null_payload = nullptr;
 
-    const_iterator(IPSpace & space) : _iter_4(space._ip4.begin()), _end_4(space._ip4.end()), _iter_6(space._ip6.begin()), _end_6(space._ip6.end()) {
-      if (this->is_ip4()) {
-        new (&_value) value_type(_iter_4->range(), _iter_4->payload());
-      } else if (this->is_ip6()) {
-        new (&_value) value_type{_iter_6->range(), _iter_6->payload()};
+    const_iterator(typename IP4Space::iterator const& iter4, typename IP6Space::iterator const& iter6) : _iter_4(iter4), _iter_6(iter6) {
+      if (_iter_4.has_next()) {
+        new(&_value) value_type{_iter_4->range(), _iter_4->payload()};
+      } else if (_iter_6.has_next()) {
+        new(&_value) value_type{_iter_6->range(), _iter_6->payload()};
       }
     }
-    const_iterator(typename IP4Space::iterator const& iter4, typename IP6Space::iterator const& iter6) : _iter_4(iter4), _end_4(iter4), _iter_6(iter6), _end_6(iter6) {
-    }
-
-    bool is_ip4() const { return _iter_4 != _end_4; }
-    bool is_ip6() const { return _iter_6 != _end_6; }
   };
 
   class iterator : public const_iterator {
@@ -803,20 +801,112 @@ public:
     using super_type = const_iterator;
     friend class IPSpace;
   public:
+  public:
+    using value_type = std::tuple<IPRange, PAYLOAD&>; /// Import for API compliance.
+    using pointer           = value_type *;
+    using reference         = value_type &;
+
+    /// Default constructor.
+    iterator() = default;
+
+    /// Pre-increment.
+    /// Move to the next element in the list.
+    /// @return The iterator.
+    self_type &operator++() { this->super_type::operator++(); return *this; }
+
+    /// Pre-decrement.
+    /// Move to the previous element in the list.
+    /// @return The iterator.
+    self_type &operator--() { this->super_type::operator--(); return *this; }
+
+    /// Post-increment.
+    /// Move to the next element in the list.
+    /// @return The iterator value before the increment.
+    self_type operator++(int) { self_type zret{*this}; ++*this; return zret; }
+
+    /// Post-decrement.
+    /// Move to the previous element in the list.
+    /// @return The iterator value before the decrement.
+    self_type operator--(int) { self_type zret{*this}; --*this; return zret; }
+
+    /// Dereference.
+    /// @return A reference to the referent.
+    value_type const &operator*() const { return reinterpret_cast<value_type const&>(super_type::_value); }
+
+    /// Dereference.
+    /// @return A pointer to the referent.
+    value_type const* operator->() const { return const_cast<value_type*>(&super_type::_value); }
+
+    /// Convenience conversion to pointer type
+    /// Because of how this list is normally used, being able to pass an iterator as a pointer is quite convienent.
+    /// If the iterator isn't valid, it converts to @c nullptr.
+    operator value_type *() const { return const_cast<value_type*>(this->super_type::operator->()); }
+
   protected:
     using super_type::super_type;
   };
 
-  const_iterator begin() const { return const_iterator(*this); }
+  const_iterator begin() const { return const_iterator(_ip4.begin(), _ip6.begin()); }
   const_iterator end() const { return const_iterator(_ip4.end(), _ip6.end()); }
 
-  iterator begin() { return iterator{*this}; }
+  iterator begin() { return iterator{_ip4.begin(), _ip6.begin()}; }
   iterator end() { return iterator{_ip4.end(), _ip6.end()}; }
 
 protected:
   IP4Space _ip4;
   IP6Space _ip6;
 };
+
+template<typename PAYLOAD>
+auto IPSpace<PAYLOAD>::const_iterator::operator++() -> self_type & {
+  if (_iter_4.has_next()) {
+    ++_iter_4;
+    if (_iter_4.has_next()) {
+      new(&_value) value_type{_iter_4->range(), _iter_4->payload()};
+      return *this;
+    }
+  }
+  if (_iter_6.has_next()) {
+    ++_iter_6;
+    if (_iter_6.has_next()) {
+      new(&_value) value_type{_iter_6->range(), _iter_6->payload()};
+      return *this;
+    }
+  }
+  new (&_value) value_type{IPRange{}, *null_payload};
+  return *this;
+}
+
+template<typename PAYLOAD>
+auto IPSpace<PAYLOAD>::const_iterator::operator++(int) -> self_type {
+  self_type zret(*this);
+  ++*this;
+  return zret;
+}
+
+template<typename PAYLOAD>
+auto IPSpace<PAYLOAD>::const_iterator::operator--() -> self_type & {
+  if (_iter_6.has_prev()) {
+    --_iter_6;
+    new (&_value) value_type{_iter_6->range(), _iter_6->payload()};
+    return *this;
+  }
+  if (_iter_4.has_prev()) {
+    --_iter_4;
+    new (&_value) value_type{_iter_4->range(), _iter_4->payload()};
+    return *this;
+  }
+  new (&_value) value_type{IPRange{}, *null_payload};
+  return *this;
+}
+
+template<typename PAYLOAD>
+auto IPSpace<PAYLOAD>::const_iterator::operator--(int) -> self_type {
+  self_type zret(*this);
+  --*this;
+  return zret;
+}
+
 // --------------------------------------------------------------------------
 
 // @c constexpr constructor is required to initialize _something_, it can't be completely uninitializing.
@@ -1121,6 +1211,8 @@ inline IP4Addr::IP4Addr(std::string_view const& text) {
   }
 }
 
+inline IP4Addr::IP4Addr(IPAddr const& addr) : _addr(addr._family == AF_INET ? addr._addr._ip4 : INADDR_ANY) {}
+
 inline IP4Addr &
 IP4Addr::operator++() {
   ++_addr;
@@ -1200,6 +1292,8 @@ inline IP6Addr::IP6Addr(std::string_view const& text) {
     this->clear();
   }
 }
+
+inline IP6Addr::IP6Addr(IPAddr const& addr) : _addr{addr._addr._ip6._addr} {}
 
 inline in6_addr& IP6Addr::copy_to(in6_addr & addr) const {
   self_type::reorder(addr, _addr._raw);

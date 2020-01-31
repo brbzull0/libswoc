@@ -182,7 +182,7 @@ bwformat(BufferWriter &w, Spec const &spec, IPAddr const &addr)
 
   if (addr_p) {
     if (addr.is_ip4()) {
-      swoc::bwformat(w, spec, addr.network_ip4());
+      swoc::bwformat(w, spec, IP4Addr{addr});
     } else if (addr.is_ip6()) {
       swoc::bwformat(w, spec, addr.network_ip6());
     } else {
